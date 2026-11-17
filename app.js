@@ -1,65 +1,17 @@
 import { THEMES, TOPICS, SUBS, LEVELS, CLS } from "./data.js";
+import {
+  data, storageOK, subscribe, conf, covered, notes, subName, readJSON, writeJSON,
+  setTopic, deleteNote, logActivity, deleteActivity, replaceAll, resetAll, exportJSON
+} from "./store.js";
+import { initChat, openChat, settings, saveSettings, hasKey, MODELS, warmUp, settingsChanged } from "./chat.js";
 
-const STORE_KEY = "econHub.v1";
 const PREFS_KEY = "econHub.prefs";
-const CLAUDE_NEW = "https://claude.ai/new?q=";
-
-/* ---------- storage ---------- */
-function readJSON(key, fallback) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
-  catch { return fallback; }
-}
-function writeJSON(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); return true; }
-  catch { return false; }
-}
-
-const blank = () => ({ version: 1, topics: {}, activity: [] });
-let data = normalise(readJSON(STORE_KEY, blank()));
-let prefs = { theme: "auto", openClaude: true, ...readJSON(PREFS_KEY, {}) };
-let storageOK = true;
-
-function normalise(d) {
-  const out = blank();
-  if (d && typeof d === "object") {
-    if (d.topics && typeof d.topics === "object") {
-      for (const [ref, v] of Object.entries(d.topics)) {
-        if (!SUBS.some(s => s[0] === ref) || !v) continue;
-        out.topics[ref] = {
-          confidence: LEVELS.includes(v.confidence) ? v.confidence : "Not started",
-          covered: !!v.covered,
-          updatedAt: typeof v.updatedAt === "string" ? v.updatedAt : null
-        };
-      }
-    }
-    if (Array.isArray(d.activity)) {
-      out.activity = d.activity.filter(a => a && typeof a === "object").map(a => ({
-        id: String(a.id || Math.random().toString(36).slice(2)),
-        kind: ["quiz", "mark", "lesson"].includes(a.kind) ? a.kind : "quiz",
-        ref: typeof a.ref === "string" ? a.ref : "",
-        title: typeof a.title === "string" ? a.title : "",
-        score: Number.isFinite(+a.score) && a.score !== "" && a.score != null ? +a.score : null,
-        outOf: Number.isFinite(+a.outOf) && +a.outOf > 0 ? +a.outOf : null,
-        note: typeof a.note === "string" ? a.note : "",
-        at: typeof a.at === "string" ? a.at : new Date().toISOString()
-      }));
-    }
-  }
-  return out;
-}
-
-function persist() {
-  storageOK = writeJSON(STORE_KEY, data);
-  renderSync();
-}
+let prefs = { theme: "auto", ...readJSON(PREFS_KEY, {}) };
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const conf = ref => data.topics[ref]?.confidence || "Not started";
-const covered = ref => !!data.topics[ref]?.covered;
 const topicOf = ref => ref.split(".").slice(0, 2).join(".");
-const subName = ref => (SUBS.find(s => s[0] === ref) || [])[1] || "";
 
 let filterTheme = "all", filterStatus = "all", query = "";
 const openRefs = new Set();
@@ -141,9 +93,9 @@ function matches([ref, name, key]) {
   return true;
 }
 function rowHTML([ref, name, key]) {
-  const c = conf(ref), t = ref.split(".")[0], open = openRefs.has(ref);
+  const c = conf(ref), t = ref.split(".")[0], open = openRefs.has(ref), ns = notes(ref);
   return `<li class="trow" data-ref="${ref}">
-    <div class="tmain"><span class="ref">${ref}</span><button class="tname" data-toggle="${ref}" aria-expanded="${open}">${esc(name)}</button></div>
+    <div class="tmain"><span class="ref">${ref}</span><button class="tname" data-toggle="${ref}" aria-expanded="${open}">${esc(name)}${ns.length ? ` <span class="badge" title="Has notes">✎ ${ns.length}</span>` : ""}</button></div>
     <div class="tctl">
       <select class="conf ${CLS[c]}" data-conf="${ref}" aria-label="Confidence for ${esc(name)}">${LEVELS.map(l => `<option${l === c ? " selected" : ""}>${l}</option>`).join("")}</select>
       <label class="cov"><input type="checkbox" data-cov="${ref}"${covered(ref) ? " checked" : ""}> Covered in class</label>
@@ -151,6 +103,7 @@ function rowHTML([ref, name, key]) {
     <div class="more"${open ? "" : " hidden"}>
       <div>${esc(key)}</div>
       <div class="muted" style="font-size:13px">${THEMES[t].papers} · ${THEMES[t].year}</div>
+      ${ns.length ? `<ul class="notes">${ns.map(n => `<li><span>${esc(n.text)}</span><button class="x" data-note-del="${ref}|${esc(n.id)}" aria-label="Delete note">×</button></li>`).join("")}</ul>` : ""}
       <div class="btns">${topicButtons(ref, name, true)}</div>
     </div>
   </li>`;
@@ -173,7 +126,7 @@ function renderList() {
 const KIND = { quiz: "Quiz", mark: "Marked answer", lesson: "Lesson" };
 function renderActs() {
   const list = [...data.activity].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20);
-  if (!list.length) { $("acts").innerHTML = `<li class="empty">Nothing logged yet. After a quiz, marked answer or lesson with Claude, tap Log a result.</li>`; return; }
+  if (!list.length) { $("acts").innerHTML = `<li class="empty">Nothing yet. Your tutor logs lessons, quizzes and marked answers here, or tap Log a result.</li>`; return; }
   $("acts").innerHTML = list.map(a => {
     const d = new Date(a.at);
     const date = isNaN(d) ? "" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
@@ -187,39 +140,65 @@ function fillRefSelect() {
     SUBS.map(([ref, name]) => `<option value="${ref}">${ref} ${esc(name)}</option>`).join("");
 }
 
-function renderAll() { renderProgress(); renderNext(); renderList(); renderActs(); renderSync(); }
-
-/* ---------- writes ---------- */
-function setTopic(ref, patch) {
-  const prev = data.topics[ref] || { confidence: "Not started", covered: false };
-  data.topics[ref] = { ...prev, ...patch, updatedAt: new Date().toISOString() };
-  persist();
-  renderProgress(); renderNext(); renderList();
+function renderTutorState() {
+  $("tutorState").textContent = hasKey() ? `Using ${MODELS[settings.model].label.split(" (")[0]}` : "Set up in Settings";
 }
+function renderAll() { renderProgress(); renderNext(); renderList(); renderActs(); renderSync(); renderTutorState(); }
+subscribe(renderAll);
 
-/* ---------- Ask Claude ---------- */
+/* ---------- toast ---------- */
 let toastT;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2800); }
 
-function weakPrompt() {
-  const weak = SUBS.filter(s => ["Shaky", "Getting there"].includes(conf(s[0])));
-  if (!weak.length) return "Quiz me on my weak topics";
-  return "Quiz me on my weak topics. These are the ones I've marked Shaky or Getting there:\n" +
-    weak.map(([ref, name]) => `- ${ref} ${name} (${conf(ref)})`).join("\n");
+/* ---------- settings & fallback to claude.ai ---------- */
+let pendingAsk = null;
+async function openInClaudeAi(text) {
+  try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
+  window.open("https://claude.ai/new?q=" + encodeURIComponent(text), "_blank", "noopener");
 }
+function openSettings(pending = null) {
+  pendingAsk = pending && pending.text ? pending : null;
+  $("sKey").value = settings.apiKey || "";
+  $("sKey").type = "password"; $("sKeyShow").textContent = "Show";
+  $("sModel").innerHTML = Object.entries(MODELS).map(([id, m]) => `<option value="${id}"${id === settings.model ? " selected" : ""}>${m.label}</option>`).join("");
+  $("sWeb").checked = !!settings.webSearch;
+  $("sSpent").textContent = "$" + (settings.spent || 0).toFixed(2);
+  $("keyIntro").textContent = hasKey()
+    ? "The tutor uses your own Claude API key. It's stored only on this device and sent only to Anthropic."
+    : "To use the tutor, add your Claude API key. It's stored only on this device and sent only to Anthropic.";
+  $("sFallbackWrap").hidden = !pendingAsk;
+  $("sRemove").hidden = !hasKey();
+  $("settingsDlg").showModal();
+}
+$("settingsBtn").addEventListener("click", () => openSettings());
+$("sKeyShow").addEventListener("click", () => {
+  const k = $("sKey"); const show = k.type === "password";
+  k.type = show ? "text" : "password"; $("sKeyShow").textContent = show ? "Hide" : "Show";
+});
+$("sRemove").addEventListener("click", () => {
+  if (!confirm("Remove the API key from this device?")) return;
+  saveSettings({ apiKey: "" }); $("sKey").value = ""; $("sRemove").hidden = true; renderTutorState(); toast("Key removed.");
+});
+$("sFallback").addEventListener("click", () => {
+  const p = pendingAsk; $("settingsDlg").close("cancel");
+  if (p) openInClaudeAi(p.text);
+});
+$("settingsDlg").addEventListener("close", () => {
+  if ($("settingsDlg").returnValue !== "save") { pendingAsk = null; return; }
+  const key = $("sKey").value.trim();
+  if (key && !key.startsWith("sk-ant-")) toast("That doesn't look like a Claude API key (they start with sk-ant-). Saved anyway.");
+  saveSettings({ apiKey: key, model: $("sModel").value, webSearch: $("sWeb").checked });
+  renderTutorState(); settingsChanged();
+  const p = pendingAsk; pendingAsk = null;
+  if (hasKey() && p) openChat(p);
+  else if (key) toast("Saved.");
+});
 
-async function ask(text) {
-  if (text === "weak") text = weakPrompt();
-  let copied = false;
-  try { await navigator.clipboard.writeText(text); copied = true; $("copybox").hidden = true; } catch { /* handled below */ }
-  if (prefs.openClaude) {
-    window.open(CLAUDE_NEW + encodeURIComponent(text), "_blank", "noopener");
-    toast(copied ? "Opening Claude. The request is also on your clipboard." : "Opening Claude with your request.");
-    return;
-  }
-  if (copied) toast("Copied. Paste it into your chat with Claude.");
-  else { $("copyText").value = text; $("copybox").hidden = false; $("copyText").focus(); $("copyText").select(); toast("Copy was blocked. The text is in the Ask Claude box."); }
+function ask(text, { send = true } = {}) {
+  openChat({ text, send, fresh: send });
 }
+initChat({ needKey: pending => openSettings(pending) });
+$("tutorBtn").addEventListener("click", () => openChat());
 
 /* ---------- theme ---------- */
 function applyTheme() {
@@ -231,7 +210,7 @@ function applyTheme() {
 
 /* ---------- backup ---------- */
 function exportData() {
-  const blob = new Blob([JSON.stringify({ ...data, exportedAt: new Date().toISOString() }, null, 2)], { type: "application/json" });
+  const blob = new Blob([exportJSON()], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `econ-study-hub-${new Date().toISOString().slice(0, 10)}.json`;
@@ -244,15 +223,16 @@ async function importData(file) {
     const parsed = JSON.parse(await file.text());
     if (!parsed || typeof parsed !== "object" || (!parsed.topics && !parsed.activity)) throw new Error("bad");
     if (!confirm("Replace the progress on this device with this backup?")) return;
-    data = normalise(parsed);
-    persist(); renderAll();
+    replaceAll(parsed);
     toast("Backup imported.");
   } catch { toast("That file isn't a Study Hub backup."); }
 }
 
 /* ---------- events ---------- */
 document.addEventListener("click", e => {
-  const a = e.target.closest("[data-ask]"); if (a) { ask(a.getAttribute("data-ask")); return; }
+  if (e.target.closest("#chatPanel")) return;
+  const a = e.target.closest("[data-ask]");
+  if (a) { ask(a.getAttribute("data-ask"), { send: !a.hasAttribute("data-prefill") }); return; }
   const tg = e.target.closest("[data-toggle]");
   if (tg) {
     const ref = tg.getAttribute("data-toggle");
@@ -262,8 +242,10 @@ document.addEventListener("click", e => {
     return;
   }
   const ch = e.target.closest("[data-theme-f]"); if (ch) { filterTheme = ch.getAttribute("data-theme-f"); renderChips(); renderList(); return; }
+  const nd = e.target.closest("[data-note-del]");
+  if (nd && confirm("Delete this note?")) { const [ref, id] = nd.getAttribute("data-note-del").split("|"); deleteNote(ref, id); return; }
   const del = e.target.closest("[data-del]");
-  if (del && confirm("Delete this entry?")) { data.activity = data.activity.filter(x => x.id !== del.getAttribute("data-del")); persist(); renderActs(); }
+  if (del && confirm("Delete this entry?")) deleteActivity(del.getAttribute("data-del"));
 });
 document.addEventListener("change", e => {
   const s = e.target.closest("[data-conf]"); if (s) { setTopic(s.getAttribute("data-conf"), { confidence: s.value }); return; }
@@ -276,8 +258,6 @@ document.addEventListener("toggle", e => {
 $("fStatus").addEventListener("change", e => { filterStatus = e.target.value; renderList(); });
 let qT; $("q").addEventListener("input", e => { clearTimeout(qT); qT = setTimeout(() => { query = e.target.value.trim(); renderList(); }, 150); });
 
-$("openClaude").checked = prefs.openClaude;
-$("openClaude").addEventListener("change", e => { prefs.openClaude = e.target.checked; writeJSON(PREFS_KEY, prefs); });
 $("themeBtn").addEventListener("click", () => {
   const order = ["auto", "light", "dark"];
   prefs.theme = order[(order.indexOf(prefs.theme) + 1) % order.length];
@@ -297,13 +277,11 @@ $("logForm").addEventListener("submit", e => {
   if (score !== "" && outOf === "") { toast("Add what the score is out of."); $("lOut").focus(); return; }
   if (score !== "" && +score > +outOf) { toast("The score can't be more than the total."); $("lScore").focus(); return; }
   const ref = $("lRef").value;
-  data.activity.push({
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+  logActivity({
     kind: $("lKind").value, ref, title: ref ? subName(ref) : "Mixed topics",
     score: score === "" ? null : +score, outOf: outOf === "" ? null : +outOf,
-    note: $("lNote").value.trim(), at: new Date().toISOString()
+    note: $("lNote").value.trim()
   });
-  persist(); renderActs();
   e.target.reset(); toggleLog(false);
   toast("Saved. Update your confidence for that topic below if it changed.");
 });
@@ -313,11 +291,8 @@ $("importBtn").addEventListener("click", () => $("importFile").click());
 $("importFile").addEventListener("change", e => { const f = e.target.files[0]; if (f) importData(f); e.target.value = ""; });
 $("resetBtn").addEventListener("click", () => {
   if (!confirm("Clear all your progress and activity on this device? Export a backup first if you might want it back.")) return;
-  data = blank(); persist(); renderAll(); toast("Everything has been reset.");
+  resetAll(); toast("Everything has been reset.");
 });
-
-/* Keep multiple tabs in sync */
-window.addEventListener("storage", e => { if (e.key === STORE_KEY) { data = normalise(readJSON(STORE_KEY, blank())); renderAll(); } });
 
 /* ---------- install / offline ---------- */
 let deferredPrompt = null;
@@ -334,4 +309,4 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 }
 
 /* ---------- boot ---------- */
-applyTheme(); fillRefSelect(); renderChips(); renderAll();
+applyTheme(); fillRefSelect(); renderChips(); renderAll(); warmUp();

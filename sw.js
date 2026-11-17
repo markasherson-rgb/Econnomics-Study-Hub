@@ -1,7 +1,8 @@
 // Offline support: cache the app shell, serve it cache-first, refresh in the background.
-const CACHE = "econ-hub-v1";
+const CACHE = "econ-hub-v2";
 const SHELL = [
-  "./", "index.html", "styles.css", "app.js", "data.js", "manifest.webmanifest",
+  "./", "index.html", "styles.css", "app.js", "data.js", "store.js", "tutor.js", "chat.js",
+  "vendor/anthropic-sdk.js", "vendor/markdown.js", "manifest.webmanifest",
   "icons/icon.svg", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png"
 ];
 
