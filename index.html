@@ -24,7 +24,9 @@
     <div class="hrow">
       <h1>Economics Study Hub</h1>
       <div class="hbtns">
+        <button class="btn small primary" id="tutorBtn">Tutor</button>
         <button class="btn small" id="installBtn" hidden>Install app</button>
+        <button class="btn small" id="settingsBtn">Settings</button>
         <button class="btn small" id="themeBtn" aria-label="Switch colour theme">Theme: Auto</button>
       </div>
     </div>
@@ -45,14 +47,13 @@
   </section>
 
   <section aria-labelledby="hAsk">
-    <h2 id="hAsk">Ask Claude</h2>
+    <div class="sec-head"><h2 id="hAsk">Ask your tutor</h2><span class="muted" style="font-size:13px" id="tutorState"></span></div>
     <div class="tiles">
-      <button class="tile" data-ask="Teach me "><span class="n">Teach me a topic</span><span class="d">The full 8-step lesson with a diagram, examples, evaluation and check questions.</span><span class="p">Teach me [topic]</span></button>
-      <button class="tile" data-ask="weak"><span class="n">Quiz me on weak topics</span><span class="d">8 exam-style questions, one at a time, from your Shaky and Getting there topics.</span><span class="p">Quiz me on my weak topics…</span></button>
-      <button class="tile" data-ask="Mark my answer.&#10;Question: &#10;Marks: &#10;Extract (if any): &#10;My answer: "><span class="n">Mark my answer</span><span class="d">Opens a template. Fill in the question, mark value and your answer.</span><span class="p">Mark my answer…</span></button>
+      <button class="tile" data-ask="Teach me " data-prefill><span class="n">Teach me a topic</span><span class="d">The full 8-step lesson with a diagram, examples, evaluation and check questions.</span><span class="p">Teach me [topic]</span></button>
+      <button class="tile" data-ask="Quiz me on my weak topics"><span class="n">Quiz me on weak topics</span><span class="d">8 exam-style questions, one at a time, from your Shaky and Getting there topics.</span><span class="p">Quiz me on my weak topics</span></button>
+      <button class="tile" data-ask="Mark my answer.&#10;Question: &#10;Marks: &#10;Extract (if any): &#10;My answer: " data-prefill><span class="n">Mark my answer</span><span class="d">Type or photograph your answer and get it marked against the KAA and evaluation levels.</span><span class="p">Mark my answer…</span></button>
     </div>
-    <label class="opt"><input type="checkbox" id="openClaude"> Open claude.ai with the request filled in (otherwise just copy it)</label>
-    <div class="note">Claude can't write to this app. When you finish a quiz or get an answer marked, use <b>Log a result</b> below and update your confidence in All topics.</div>
+    <div class="note">Your tutor updates your confidence ratings and Recent activity for you after lessons, quizzes and marking.</div>
     <div class="copybox" id="copybox" hidden><label for="copyText" class="muted" style="font-size:13px">Copying was blocked. Select this text and copy it:</label><textarea id="copyText" rows="3" readonly></textarea></div>
   </section>
 
@@ -101,8 +102,56 @@
     </div>
   </section>
 
-  <footer>Works offline once loaded.</footer>
+  <footer>Works offline once loaded. The tutor needs an internet connection.</footer>
 </div>
+
+<div class="chat" id="chatPanel" role="dialog" aria-modal="true" aria-labelledby="chatTitle" hidden>
+  <div class="chat-head">
+    <button class="btn small" id="chatBack" aria-label="Back to the hub">‹ Hub</button>
+    <div class="chat-title"><b id="chatTitle">Tutor</b><span class="muted" id="chatModel"></span></div>
+    <span class="muted num chat-cost" id="chatCost"></span>
+    <button class="btn small" id="chatNew">New chat</button>
+  </div>
+  <div class="chat-log" id="chatLog" aria-live="polite"></div>
+  <form class="chat-form" id="chatForm">
+    <div class="attach" id="chatAttach" hidden></div>
+    <div class="chat-row">
+      <button type="button" class="btn icon" id="chatPhoto" aria-label="Attach a photo">📷</button>
+      <input type="file" id="chatFile" accept="image/*" multiple hidden>
+      <textarea id="chatInput" rows="1" placeholder="Message your tutor…" aria-label="Message your tutor"></textarea>
+      <button type="submit" class="btn primary" id="chatSend">Send</button>
+      <button type="button" class="btn" id="chatStop" hidden>Stop</button>
+    </div>
+  </form>
+</div>
+
+<dialog id="settingsDlg" aria-labelledby="hSettings">
+  <form method="dialog" id="settingsForm" class="dlg">
+    <h2 id="hSettings">Tutor settings</h2>
+    <p class="muted" id="keyIntro" style="margin:0;font-size:14px">The tutor uses your own Claude API key. It's stored only on this device and sent only to Anthropic.</p>
+    <label class="field">API key
+      <span class="frow"><input type="password" id="sKey" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" style="flex:1"><button type="button" class="btn small" id="sKeyShow">Show</button></span>
+    </label>
+    <details class="howto"><summary>How do I get an API key?</summary>
+      <ol>
+        <li>Go to <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a> and sign up (this is separate from a Claude subscription).</li>
+        <li>Under <b>Billing</b>, add a card and buy some credit, for example $10. You can set a monthly limit there too.</li>
+        <li>Under <b>API keys</b>, tap <b>Create key</b>, copy it and paste it above.</li>
+      </ol>
+    </details>
+    <label class="field">Model
+      <select id="sModel"></select>
+    </label>
+    <label class="opt"><input type="checkbox" id="sWeb"> Let the tutor search the web to check current figures (about 1p per search)</label>
+    <p class="muted" style="margin:0;font-size:13px">Model and web search changes apply when you start a new chat. Spent so far on this device: <b class="num" id="sSpent">$0.00</b> (estimate)</p>
+    <div class="btns">
+      <button class="btn primary" value="save" id="sSave">Save</button>
+      <button class="btn" value="cancel" formnovalidate>Cancel</button>
+      <button class="btn danger" type="button" id="sRemove">Remove key</button>
+    </div>
+    <p class="muted" style="margin:0;font-size:13px" id="sFallbackWrap" hidden>No key yet? <button type="button" class="linkbtn" id="sFallback">Open this in claude.ai instead</button></p>
+  </form>
+</dialog>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="app.js"></script>
 </body>
