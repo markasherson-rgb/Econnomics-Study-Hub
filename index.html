@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Economics Study Hub</title>
+<meta name="description" content="Track your Edexcel A Level Economics A (9EC0) revision and get Claude to teach, quiz and mark.">
+<meta name="theme-color" content="#1d5fd1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Econ Hub">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Edexcel A Level Economics A · 9EC0 · Exams summer 2028</div>
+    <div class="hrow">
+      <h1>Economics Study Hub</h1>
+      <div class="hbtns">
+        <button class="btn small" id="installBtn" hidden>Install app</button>
+        <button class="btn small" id="themeBtn" aria-label="Switch colour theme">Theme: Auto</button>
+      </div>
+    </div>
+    <div class="sync"><span class="dot" id="syncDot"></span><span id="syncText">Loading…</span></div>
+  </header>
+
+  <section aria-labelledby="hProg">
+    <div class="sec-head"><h2 id="hProg">Your progress</h2><span class="muted num" id="covTotal"></span></div>
+    <div class="big"><b class="num" id="confCount">0</b><span class="muted">of <span id="subTotal">87</span> subtopics confident</span></div>
+    <div class="bar" id="allBar" aria-hidden="true"></div>
+    <div class="legend"><span><i style="background:var(--confident)"></i>Confident</span><span><i style="background:var(--getting)"></i>Getting there</span><span><i style="background:var(--shaky)"></i>Shaky</span><span><i style="background:var(--none-soft);border:1px solid var(--line)"></i>Not started</span></div>
+    <div class="themes" id="themes"></div>
+  </section>
+
+  <section aria-labelledby="hNext">
+    <div class="sec-head"><h2 id="hNext">Next up</h2><span class="muted" style="font-size:13px">Topics you've covered but aren't confident on yet</span></div>
+    <div class="cards" id="next"></div>
+  </section>
+
+  <section aria-labelledby="hAsk">
+    <h2 id="hAsk">Ask Claude</h2>
+    <div class="tiles">
+      <button class="tile" data-ask="Teach me "><span class="n">Teach me a topic</span><span class="d">The full 8-step lesson with a diagram, examples, evaluation and check questions.</span><span class="p">Teach me [topic]</span></button>
+      <button class="tile" data-ask="weak"><span class="n">Quiz me on weak topics</span><span class="d">8 exam-style questions, one at a time, from your Shaky and Getting there topics.</span><span class="p">Quiz me on my weak topics…</span></button>
+      <button class="tile" data-ask="Mark my answer.&#10;Question: &#10;Marks: &#10;Extract (if any): &#10;My answer: "><span class="n">Mark my answer</span><span class="d">Opens a template. Fill in the question, mark value and your answer.</span><span class="p">Mark my answer…</span></button>
+    </div>
+    <label class="opt"><input type="checkbox" id="openClaude"> Open claude.ai with the request filled in (otherwise just copy it)</label>
+    <div class="note">Claude can't write to this app. When you finish a quiz or get an answer marked, use <b>Log a result</b> below and update your confidence in All topics.</div>
+    <div class="copybox" id="copybox" hidden><label for="copyText" class="muted" style="font-size:13px">Copying was blocked. Select this text and copy it:</label><textarea id="copyText" rows="3" readonly></textarea></div>
+  </section>
+
+  <section aria-labelledby="hAct">
+    <div class="sec-head"><h2 id="hAct">Recent activity</h2><button class="btn small" id="logBtn" aria-expanded="false" aria-controls="logForm">Log a result</button></div>
+    <form class="log" id="logForm" hidden>
+      <div class="fgrid">
+        <label class="field">Type<select id="lKind"><option value="quiz">Quiz</option><option value="mark">Marked answer</option><option value="lesson">Lesson</option></select></label>
+        <label class="field">Topic<select id="lRef"></select></label>
+        <label class="field">Score<input type="number" id="lScore" min="0" inputmode="numeric"></label>
+        <label class="field">Out of<input type="number" id="lOut" min="1" inputmode="numeric"></label>
+      </div>
+      <label class="field">Note (optional)<input type="text" id="lNote" maxlength="200" placeholder="e.g. Lost marks on evaluation"></label>
+      <div class="btns"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" id="logCancel">Cancel</button></div>
+    </form>
+    <ul class="acts" id="acts"></ul>
+  </section>
+
+  <section aria-labelledby="hTopics">
+    <div class="sec-head"><h2 id="hTopics">All topics</h2><span class="muted" style="font-size:13px">Set your confidence as you go</span></div>
+    <div class="filters">
+      <div class="chips" id="themeChips" role="group" aria-label="Filter by theme"></div>
+      <div class="frow">
+        <input type="search" id="q" placeholder="Search topics, e.g. elasticity" aria-label="Search topics">
+        <select id="fStatus" aria-label="Filter by confidence">
+          <option value="all">All confidence levels</option>
+          <option value="Not started">Not started</option>
+          <option value="Shaky">Shaky</option>
+          <option value="Getting there">Getting there</option>
+          <option value="Confident">Confident</option>
+          <option value="covered-not-conf">Covered, not confident</option>
+        </select>
+      </div>
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <section aria-labelledby="hData">
+    <h2 id="hData">Your data</h2>
+    <p class="muted" style="margin:0;font-size:14px">Progress is saved on this device only. Export a backup to move it to another phone or computer.</p>
+    <div class="btns">
+      <button class="btn" id="exportBtn">Export backup</button>
+      <button class="btn" id="importBtn">Import backup</button>
+      <button class="btn danger" id="resetBtn">Reset everything</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+  </section>
+
+  <footer>Works offline once loaded.</footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
